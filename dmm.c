@@ -19,6 +19,7 @@
 
 typedef struct metadata {
   size_t size;
+  char status;
   struct metadata* next;
   struct metadata* prev;
 } metadata_t;
@@ -28,11 +29,33 @@ typedef struct metadata {
  */
 
 static metadata_t* freelist = NULL;
+static metadata_t* heap_head = NULL;
+
+/*
+* return address of first free block that fits
+* return NULL if there is no block that fits
+*/
+metadata_t* findFirstFitFreeBlock(metadata_t* freelist, size_t requiredSizeAligned){
+    metadata_t* trav = freelist;
+    while(trav != NULL){
+      if(trav->size >= requiredSizeAligned){
+        return trav;
+      }
+      else{
+        trav = trav->next;
+      }
+    }
+
+    return NULL;
+
+}
 
 void* dmalloc(size_t numbytes) {
 
+  size_t numBytesAligned = (size_t) ALIGN(numbytes);
+
   if(freelist == NULL) {
-    if(!dmalloc_init()) {
+    if(!dmalloc_init()) { //dmalloc_init is successful we don't enter here
       return NULL;
     }
   }
@@ -40,14 +63,41 @@ void* dmalloc(size_t numbytes) {
   assert(numbytes > 0);
 
   /* your code here */
+  metadata_t* myBlock = findFirstFitFreeBlock(freelist, numBytesAligned);
 
-  return NULL;
+  if(myBlock == NULL){ //in case couldn't find suitable free block
+    return NULL;
+  }
+  
+  else{
+    metadata_t* myNewFreeBlock = myBlock + METADATA_T_ALIGNED + numBytesAligned; 
+    
+    if(myBlock->prev == NULL){ //this means that freelist itself was our first fit block, so we need to update it to myNewFreeBlock which becomes the new freelist
+      freelist = myNewFreeBlock;
+    }
+
+    if(myBlock->prev != NULL){ 
+      (myBlock->prev)->next = myNewFreeBlock;
+    }
+    
+    myNewFreeBlock->size = myBlock->size - (METADATA_T_ALIGNED + numBytesAligned);
+    myNewFreeBlock->status = 'f';
+    myNewFreeBlock->prev = myBlock->prev;
+    myNewFreeBlock->next = myBlock->next;
+
+    myBlock->size = numBytesAligned;
+    myBlock->status = 'a';
+    myBlock->prev = NULL;
+    myBlock->next = NULL;
+
+    return myBlock + METADATA_T_ALIGNED;
+  }
 }
 
 void dfree(void* ptr) {
   /* your code here */
-}
 
+}
 /*
  * Allocate heap_region slab with a suitable syscall.
  */
@@ -68,7 +118,11 @@ bool dmalloc_init() {
   }
   freelist->next = NULL;
   freelist->prev = NULL;
+  freelist->status = 'f';
   freelist->size = max_bytes-METADATA_T_ALIGNED;
+
+  heap_head = freelist; //pointer to the beginning of the heap
+
   return true;
 }
 
