@@ -28,11 +28,20 @@
 
 #define METADATA_T_ALIGNED (ALIGN(sizeof(metadata_t)))
 
+
+#ifdef NDEBUG
+	#define DEBUG(M, ...)
+	#define PRINT_FREELIST print_freelist
+#else
+	#define DEBUG(M, ...) fprintf(stderr, "[DEBUG] %s:%d: " M "\n", __FILE__, __LINE__, ##__VA_ARGS__)
+	#define PRINT_FREELIST
+#endif
+
 typedef enum{false, true} bool;
 
 bool dmalloc_init();
 void *dmalloc(size_t numbytes);
 void dfree(void *allocptr);
-
+void print_freelist(); 
 
 #endif /* end of __CPS310_MM_H__ */

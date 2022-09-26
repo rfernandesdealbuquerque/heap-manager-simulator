@@ -19,7 +19,6 @@
 
 typedef struct metadata {
   size_t size;
-  char status;
   struct metadata* next;
   struct metadata* prev;
 } metadata_t;
@@ -50,6 +49,30 @@ metadata_t* findFirstFitFreeBlock(metadata_t* freelist, size_t requiredSizeAlign
 
 }
 
+//this function assumes that free list is always sorted by address
+//it coalesces all possible blocks to be coalesced in a single run through the list
+void coalesceFreeBlocks(metadata_t* freelist){
+  metadata_t* trav = freelist;
+
+  while(trav != NULL){
+    if((char*) trav + METADATA_T_ALIGNED + trav->size == trav->next){
+      metadata_t* blockToCoalesce = trav->next;
+      trav->size = trav->size + METADATA_T_ALIGNED + blockToCoalesce->size;
+      if(blockToCoalesce->next != NULL){
+        (blockToCoalesce->next)->prev = trav;
+      }
+      blockToCoalesce->prev = NULL;
+      trav->next = blockToCoalesce->next;
+      blockToCoalesce->next = NULL;
+      //now coalesced but don't advance trav yet because there might be another contiguous block to coalesce
+    }
+    else{
+      trav = trav->next;
+
+    }
+  }
+}
+
 void* dmalloc(size_t numbytes) {
 
   size_t numBytesAligned = (size_t) ALIGN(numbytes);
@@ -70,7 +93,7 @@ void* dmalloc(size_t numbytes) {
   }
   
   else{
-    metadata_t* myNewFreeBlock = myBlock + METADATA_T_ALIGNED + numBytesAligned; 
+    metadata_t* myNewFreeBlock = (char*) myBlock + METADATA_T_ALIGNED + numBytesAligned; 
     
     if(myBlock->prev == NULL){ //this means that freelist itself was our first fit block, so we need to update it to myNewFreeBlock which becomes the new freelist
       freelist = myNewFreeBlock;
@@ -80,26 +103,43 @@ void* dmalloc(size_t numbytes) {
       (myBlock->prev)->next = myNewFreeBlock;
     }
     
-    myNewFreeBlock->size = myBlock->size - (METADATA_T_ALIGNED + numBytesAligned);
-    myNewFreeBlock->status = 'f';
+    myNewFreeBlock->size = myBlock->size - METADATA_T_ALIGNED - numBytesAligned;
     myNewFreeBlock->prev = myBlock->prev;
     myNewFreeBlock->next = myBlock->next;
 
+    if(myBlock->next != NULL){
+      (myBlock->next)->prev = myNewFreeBlock;
+    }
+
     myBlock->size = numBytesAligned;
-    myBlock->status = 'a';
     myBlock->prev = NULL;
     myBlock->next = NULL;
 
-    return myBlock + METADATA_T_ALIGNED;
+    print_freelist();
+    return (char*) myBlock + METADATA_T_ALIGNED;
   }
 }
 
 void dfree(void* ptr) {
   /* your code here */
-
+  
   metadata_t* trav = freelist;
-  metadata_t* ptrToFree = (metadata_t*) ptr;
+  metadata_t* ptrToFree = (metadata_t*) (ptr - METADATA_T_ALIGNED);
 
+/*
+  if(trav < ptrToFree && trav->next == NULL){
+    trav->next = ptrToFree;
+    ptrToFree->prev = trav;
+    ptrToFree->next = trav->next;
+  }
+
+  else if(trav > ptrToFree && trav->next == NULL){
+    freelist = ptrToFree;
+    ptrToFree->next = trav;
+    ptrToFree->prev = NULL;
+    trav->prev = ptrToFree;
+  }
+  */
   while(trav != NULL){
     if(trav < ptrToFree){
       trav = trav->next;
@@ -109,7 +149,7 @@ void dfree(void* ptr) {
       trav = NULL;
     }
 
-    else{
+    else{ //insert into free list while keeping sorted
       if(trav->prev != NULL){
         (trav->prev)->next = ptrToFree;
         ptrToFree->prev = trav->prev;
@@ -126,8 +166,9 @@ void dfree(void* ptr) {
         trav = NULL;
       }
     }
-
   }
+
+  coalesceFreeBlocks(freelist);
 
 }
 /*
@@ -150,7 +191,6 @@ bool dmalloc_init() {
   }
   freelist->next = NULL;
   freelist->prev = NULL;
-  freelist->status = 'f';
   freelist->size = max_bytes-METADATA_T_ALIGNED;
 
   heap_head = freelist; //pointer to the beginning of the heap
@@ -160,21 +200,11 @@ bool dmalloc_init() {
 
 
 /* for debugging; can be turned off through -NDEBUG flag*/
-/*
-
-This code is here for reference.  It may be useful.
-Warning: the NDEBUG flag also turns off assert protection.
 
 
-void print_freelist(); 
+//This code is here for reference.  It may be useful.
+//Warning: the NDEBUG flag also turns off assert protection.
 
-#ifdef NDEBUG
-	#define DEBUG(M, ...)
-	#define PRINT_FREELIST print_freelist
-#else
-	#define DEBUG(M, ...) fprintf(stderr, "[DEBUG] %s:%d: " M "\n", __FILE__, __LINE__, ##__VA_ARGS__)
-	#define PRINT_FREELIST
-#endif
 
 
 void print_freelist() {
@@ -189,4 +219,4 @@ void print_freelist() {
   }
   DEBUG("\n");
 }
-*/
+
