@@ -19,6 +19,7 @@
 #define PFL
 #endif
 
+#define MAX_HEAP_SIZE	(1024)
 #define STEP 8
 
 //Test Case 2: Allocate entire heap in multiple steps and free in reverse order

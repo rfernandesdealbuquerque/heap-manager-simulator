@@ -97,6 +97,38 @@ void* dmalloc(size_t numbytes) {
 void dfree(void* ptr) {
   /* your code here */
 
+  metadata_t* trav = freelist;
+  metadata_t* ptrToFree = (metadata_t*) ptr;
+
+  while(trav != NULL){
+    if(trav < ptrToFree){
+      trav = trav->next;
+    }
+
+    else if(trav == ptrToFree){
+      trav = NULL;
+    }
+
+    else{
+      if(trav->prev != NULL){
+        (trav->prev)->next = ptrToFree;
+        ptrToFree->prev = trav->prev;
+        ptrToFree->next = trav;
+        trav->prev = ptrToFree;
+        trav = NULL;
+      }
+
+      else{
+        trav->prev = ptrToFree;
+        ptrToFree->prev = NULL;
+        ptrToFree->next = trav;
+        freelist = ptrToFree;
+        trav = NULL;
+      }
+    }
+
+  }
+
 }
 /*
  * Allocate heap_region slab with a suitable syscall.
