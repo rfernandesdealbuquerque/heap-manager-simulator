@@ -37,7 +37,7 @@ static metadata_t* heap_head = NULL;
 metadata_t* findFirstFitFreeBlock(metadata_t* freelist, size_t requiredSizeAligned){
     metadata_t* trav = freelist;
     while(trav != NULL){
-      if(trav->size >= requiredSizeAligned){
+      if(trav->size >= requiredSizeAligned + METADATA_T_ALIGNED){
         return trav;
       }
       else{
@@ -54,16 +54,21 @@ metadata_t* findFirstFitFreeBlock(metadata_t* freelist, size_t requiredSizeAlign
 void coalesceFreeBlocks(metadata_t* freelist){
   metadata_t* trav = freelist;
 
-  while(trav != NULL){
-    if((char*) trav + METADATA_T_ALIGNED + trav->size == trav->next){
+  while(trav->next != NULL){
+    
+    metadata_t* headerOfNextBlock = (char*) trav + METADATA_T_ALIGNED + trav->size;
+    bool foundTwoContiguosFreeMemoryBlocks = (headerOfNextBlock == trav->next); 
+
+    if(foundTwoContiguosFreeMemoryBlocks){
       metadata_t* blockToCoalesce = trav->next;
       trav->size = trav->size + METADATA_T_ALIGNED + blockToCoalesce->size;
+      
+      trav->next = blockToCoalesce->next;
       if(blockToCoalesce->next != NULL){
         (blockToCoalesce->next)->prev = trav;
       }
-      blockToCoalesce->prev = NULL;
-      trav->next = blockToCoalesce->next;
       blockToCoalesce->next = NULL;
+      blockToCoalesce->prev = NULL;
       //now coalesced but don't advance trav yet because there might be another contiguous block to coalesce
     }
     else{
@@ -74,6 +79,8 @@ void coalesceFreeBlocks(metadata_t* freelist){
 }
 
 void* dmalloc(size_t numbytes) {
+  //DEBUG("-----Before MALLOC---- %u", (size_t) ALIGN(numbytes));
+  //print_freelist();
 
   size_t numBytesAligned = (size_t) ALIGN(numbytes);
 
@@ -102,6 +109,10 @@ void* dmalloc(size_t numbytes) {
     if(myBlock->prev != NULL){ 
       (myBlock->prev)->next = myNewFreeBlock;
     }
+
+    // if(numBytesAligned == 5120){
+    //   DEBUG("myBlock->size: %u METADATA_T_ALIGNED: %u numBytesAligned: %u", myBlock->size, METADATA_T_ALIGNED, numBytesAligned);
+    // }
     
     myNewFreeBlock->size = myBlock->size - METADATA_T_ALIGNED - numBytesAligned;
     myNewFreeBlock->prev = myBlock->prev;
@@ -115,34 +126,41 @@ void* dmalloc(size_t numbytes) {
     myBlock->prev = NULL;
     myBlock->next = NULL;
 
-    print_freelist();
+    //DEBUG("-----After MALLOC----- %u", (size_t) ALIGN(numbytes));
+    //print_freelist();
     return (char*) myBlock + METADATA_T_ALIGNED;
   }
 }
 
 void dfree(void* ptr) {
   /* your code here */
-  
+  // DEBUG("-----Before FREE----- %p", (metadata_t*) (ptr - METADATA_T_ALIGNED));
+  // print_freelist();
+
   metadata_t* trav = freelist;
   metadata_t* ptrToFree = (metadata_t*) (ptr - METADATA_T_ALIGNED);
 
-/*
-  if(trav < ptrToFree && trav->next == NULL){
-    trav->next = ptrToFree;
+  bool FreelistIsOneNode = trav->next == NULL && trav->prev == NULL;
+
+  if(FreelistIsOneNode && ptrToFree > trav){ //covers one node insert after trav
+    trav->next = ptrToFree; 
     ptrToFree->prev = trav;
-    ptrToFree->next = trav->next;
+    ptrToFree->next = NULL;
+    trav = NULL;
   }
 
-  else if(trav > ptrToFree && trav->next == NULL){
-    freelist = ptrToFree;
-    ptrToFree->next = trav;
-    ptrToFree->prev = NULL;
-    trav->prev = ptrToFree;
-  }
-  */
   while(trav != NULL){
-    if(trav < ptrToFree){
+    bool TravIsFirstNode = trav->prev == NULL;
+    bool TravIsLastNode = trav->next == NULL;
+
+    if(trav < ptrToFree && !TravIsLastNode){
       trav = trav->next;
+    }
+
+    else if(trav < ptrToFree && TravIsLastNode){
+      trav->next = ptrToFree;
+      ptrToFree->prev = trav;
+      ptrToFree->next = NULL;
     }
 
     else if(trav == ptrToFree){
@@ -150,26 +168,28 @@ void dfree(void* ptr) {
     }
 
     else{ //insert into free list while keeping sorted
-      if(trav->prev != NULL){
-        (trav->prev)->next = ptrToFree;
-        ptrToFree->prev = trav->prev;
-        ptrToFree->next = trav;
-        trav->prev = ptrToFree;
-        trav = NULL;
-      }
-
-      else{
+      if(TravIsFirstNode){
         trav->prev = ptrToFree;
         ptrToFree->prev = NULL;
         ptrToFree->next = trav;
         freelist = ptrToFree;
         trav = NULL;
       }
+
+      else if(!TravIsFirstNode){
+        (trav->prev)->next = ptrToFree;
+        ptrToFree->prev = trav->prev;
+        ptrToFree->next = trav;
+        trav->prev = ptrToFree;
+        trav = NULL;
+      }
     }
   }
-
   coalesceFreeBlocks(freelist);
 
+  // DEBUG("-----After FREE----- %p", ptrToFree);
+  // print_freelist();
+  
 }
 /*
  * Allocate heap_region slab with a suitable syscall.
