@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Dynamic memory manager
 
 For this project you will implement a basic heap manager. The standard C runtime library provides a standard heap manager through the malloc and free library calls. For this project you will implement your own version of this interface.
@@ -90,3 +91,6 @@ We recommend that you first implement dmalloc with splitting. Test it. Then impl
     make test 
 
 
+=======
+# heap-manager-simulator
+>>>>>>> 6a5e75399d72ab8a8301494663a0808b36bbf43c
