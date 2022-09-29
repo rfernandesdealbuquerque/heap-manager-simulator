@@ -1,1 +1,0 @@
-# heap-manager-simulator
